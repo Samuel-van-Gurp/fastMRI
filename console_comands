@@ -1,0 +1,27 @@
+This reconstructs a multi coil data
+
+Run this in the terminal:
+ nice -n 10 python -m fastmri_examples.zero_filled.run_zero_filled --challenge multicoil --data_path /scratch/svangurp/fastMRI/brain/test/ --output_path /home/svangurp/scratch/reconstructions/fastmri_brain_test/zero_filled/
+
+Run this in the python console
+>>>/scratch/svangurp/envs/fastMRI/bin/python /opt/amc/pycharm-2020.1.1/plugins/python/helpers/pydev/pydevconsole.py --mode=client --port=38401
+
+import sys; print('Python %s on %s' % (sys.version, sys.platform))
+sys.path.extend(['/home/svangurp/PycharmProjects/fastMRI'])
+PyDev console: starting.
+Python 3.8.8 (default, Feb 24 2021, 21:46:12)
+[GCC 7.3.0] on linux
+
+>>>import matplotlib.pyplot as plt
+>>>import numpy as np
+>>>import h5py
+
+recon = h5py.File('/home/svangurp/scratch/reconstructions/fastmri_brain_test/zero_filled/file_brain_AXFLAIR_200_6002441.h5', 'r')
+recon.keys()
+<KeysViewHDF5 ['reconstruction']>
+>>>recon = recon['reconstruction']
+>>>recon.shape
+(16, 640, 320)
+>>>plt.imshow(np.abs(recon[0]), cmap='gray')
+<matplotlib.image.AxesImage object at 0x7f7c1524f160>
+>>>plt.show()
