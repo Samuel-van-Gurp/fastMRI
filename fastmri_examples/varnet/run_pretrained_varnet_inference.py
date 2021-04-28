@@ -5,20 +5,6 @@ This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
 
-import argparse
-import time
-from collections import defaultdict
-from pathlib import Path
-
-import fastmri
-import fastmri.data.transforms as T
-import numpy as np
-import requests
-import torch
-from fastmri.data import SliceDataset
-from fastmri.models import VarNet
-from tqdm import tqdm
-
 VARNET_FOLDER = "https://dl.fbaipublicfiles.com/fastMRI/trained_models/varnet/"
 MODEL_FNAMES = {
     "varnet_knee_mc": "knee_leaderboard_state_dict.pt",
