@@ -1,9 +1,24 @@
 """
 Copyright (c) Facebook, Inc. and its affiliates.
-
 This source code is licensed under the MIT license found in the
 LICENSE file in the root directory of this source tree.
 """
+
+import argparse
+import time
+from collections import defaultdict
+from pathlib import Path
+
+import numpy as np
+import requests
+import torch
+from tqdm import tqdm
+
+import fastmri
+import fastmri.data.transforms as T
+from fastmri.data import SliceDataset
+from fastmri.data.subsample import create_mask_for_mask_type
+from fastmri.models import VarNet
 
 VARNET_FOLDER = "https://dl.fbaipublicfiles.com/fastMRI/trained_models/varnet/"
 MODEL_FNAMES = {
@@ -31,10 +46,10 @@ def download_model(url, fname):
 
 
 def run_varnet_model(batch, model, device):
-    masked_kspace, mask, _, fname, slice_num, _, crop_size = batch
+    masked_kspace, sensitivity_map, mask, _, fname, slice_num, _, crop_size = batch
     crop_size = crop_size[0]  # always have a batch size of 1 for varnet
 
-    output = model(masked_kspace.to(device), mask.to(device)).cpu()
+    output = model(masked_kspace.to(device), sensitivity_map.to(device), mask.to(device)).cpu()
 
     # detect FLAIR 203
     if output.shape[-1] < crop_size[1]:
@@ -45,8 +60,8 @@ def run_varnet_model(batch, model, device):
     return output, int(slice_num[0]), fname[0]
 
 
-def run_inference(challenge, state_dict_file, data_path, output_path, device):
-    model = VarNet(num_cascades=12, pools=4, chans=18, sens_pools=4, sens_chans=8)
+def run_inference(challenge, state_dict_file, data_path, output_path, mask_func, use_sens_net, device):
+    model = VarNet(num_cascades=12, pools=4, chans=18, use_sens_net=use_sens_net, sens_pools=4, sens_chans=8)
     # download the state_dict if we don't have it
     if state_dict_file is None:
         if not Path(MODEL_FNAMES[challenge]).exists():
@@ -59,7 +74,11 @@ def run_inference(challenge, state_dict_file, data_path, output_path, device):
     model = model.eval()
 
     # data loader setup
-    data_transform = T.VarNetDataTransform()
+    if mask_func is None:
+        data_transform = T.VarNetDataTransform()
+    else:
+        data_transform = T.VarNetDataTransform(mask_func=mask_func)
+
     dataset = SliceDataset(
         root=data_path, transform=data_transform, challenge="multicoil"
     )
@@ -84,7 +103,7 @@ def run_inference(challenge, state_dict_file, data_path, output_path, device):
 
     end_time = time.perf_counter()
 
-    print(f"Elapsed time for {len(dataloader)} slices: {end_time-start_time}")
+    print(f"Elapsed time for {len(dataloader)} slices: {end_time - start_time}")
 
 
 if __name__ == "__main__":
@@ -125,6 +144,42 @@ if __name__ == "__main__":
         required=True,
         help="Path for saving reconstructions",
     )
+    parser.add_argument(
+        "--set",
+        type=str,
+        required=True,
+        choices=['val', 'test'],
+        default='test',
+        help="Choose to reconstruct the val set or the test set.",
+    )
+    parser.add_argument(
+        "--use_sens_net",
+        action='store_false',
+        help="Toggle to estimate sensitivities maps using from the ACS and a U-Net.",
+    )
+
+    # data transform params
+    parser.add_argument(
+        "--mask_type",
+        choices=("random", "equispaced", "gaussian2d"),
+        default="random",
+        type=str,
+        help="Type of k-space mask",
+    )
+    parser.add_argument(
+        "--center_fractions",
+        nargs="+",
+        default=[0.08],
+        type=float,
+        help="Number of center lines to use in mask",
+    )
+    parser.add_argument(
+        "--accelerations",
+        nargs="+",
+        default=[4],
+        type=int,
+        help="Acceleration rates to use for masks",
+    )
 
     args = parser.parse_args()
 
@@ -133,5 +188,8 @@ if __name__ == "__main__":
         args.state_dict_file,
         args.data_path,
         args.output_path,
+        create_mask_for_mask_type(args.mask_type, args.center_fractions,
+                                  args.accelerations) if args.set == 'val' else None,
+        args.use_sens_net,
         torch.device(args.device),
     )
